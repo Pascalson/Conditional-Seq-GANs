@@ -1,6 +1,7 @@
 # Condition Sequence Generators
 This source includes stepwise evaluation methods for sequential GANs, e.g., SeqGAN.
-This source is the first version.
+This project is maintained by [Yi-Lin Tuan](https://github.com/Pascalson).
+
 
 ## Requirements
 * Developed in Tensorflow r1.3. have also been tested on r1.8
@@ -10,7 +11,7 @@ This source is the first version.
 * modify the path assigned in `run.sh`
 
 ## Usage
-We provide the code, script, and our processed dataset (OpenSubtitles, Counting). Feel free to cope with any dataset you prepare, but please make sure the format is consistent with our assigned format.
+We provide the code, script, and [our processed dataset (OpenSubtitles, Counting)](https://github.com/Pascalson/chatbot-data). Feel free to cope with any dataset you prepare, but please make sure the format is consistent with our assigned format.
 * The dataset should be placed under directory `./data/`, e.g., `./data/opensubtitles/opensubtitles.txt`. Or you have to check the datapath in the codes.
 
 To run the experiments with default parameters:
@@ -40,4 +41,4 @@ models:
 * `units.py`: basic encoding and decoding
 
 data processing:
-* data_utils.py
+* `data_utils.py`
