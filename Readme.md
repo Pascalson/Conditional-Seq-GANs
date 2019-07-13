@@ -1,8 +1,17 @@
 # Condition Sequence Generators
+
 The project is for conditional sequence generation, e.g., chit-chat chatbot.
-The programmed training methods includes *cross entropy minimization / maximum likelihood estimation (MLE)\[2\]*,  *REINFORCE\[3\]*, and several stepwise evaluation methods for sequential GANs, e.g., *SeqGAN \(w/ Monte-Carlo\)\[4\], MaliGAN,\[5\] REGS\[6\], the update method of MaskGAN\[7\], StepGAN\[1\]*.
-The usable testing methods includes *argmax*, *softmax samples*, *beam search*, *maximum mutual information\[8\]*.
-The project is the implementation of our paper: [Tuan, Yi-Lin, and Hung-Yi Lee. "Improving conditional sequence generative adversarial networks by stepwise evaluation." IEEE/ACM Transactions on Audio, Speech, and Language Processing 27.4 (2019): 788-798.](https://arxiv.org/abs/1808.05599)
+
+The programmed training methods includes **cross entropy minimization / maximum likelihood estimation (MLE)**\[2\],  **REINFORCE**\[3\], and several stepwise evaluation methods for sequential GANs, e.g., **SeqGAN \(w/ Monte-Carlo\)**\[4\], **MaliGAN**\[5\], **REGS**\[6\], **the update method of MaskGAN**\[7\], **StepGAN**\[1\].
+
+The usable testing methods includes **argmax**, **softmax samples**, **beam search**, **maximum mutual information**\[8\].
+
+The project is the implementation of our paper:
+* [Tuan, Yi-Lin, and Hung-Yi Lee. "Improving conditional sequence generative adversarial networks by stepwise evaluation." IEEE/ACM Transactions on Audio, Speech, and Language Processing 27.4 (2019): 788-798.](https://arxiv.org/abs/1808.05599)
+If you find it helpful, please kindly cite the paper.
+
+![StepGAN Architecture](St_StepGAN.png "The StepGAN Architecture. x is an input message and y1 to y6 are infered output tokens. The details are in the paper.")
+
 
 ## Requirements
 * Has been tested on from Tensorflow r1.3 to r1.13
@@ -26,21 +35,59 @@ $bash run.sh <GPU_ID> <TEST_TYPE> <MODEL_TYPE> <TASK_NAME>
 
 You can change all the hyper-parameters in `run.sh`. The options are listed in `args.py`.
 
+### Examples
+
+training MLE for Counting
+```
+$bash run.sh 0 None MLE Counting
+```
+
+training REINFORCE for Counting
+```
+$bash run.sh 0 None REINFORCE Counting
+```
+
+training SeqGAN for Counting with `lr=5e-5 lrdecay=0.99 Gstep=1 Dstep=5`
+```
+$bash run.sh 0 None SeqGAN Counting 5e-5 0.99 1 5
+```
+
+testing MLE for Counting
+```
+$bash run.sh 0 accuracy MLE Counting
+```
+
+testing SeqGAN for Counting with `lr=5e-5 lrdecay=0.99 Gstep=1 Dstep=5`
+```
+$bash run.sh 0 accuracy SeqGAN Counting 5e-5 0.99 1 5
+```
+
+testing SeqGAN for OpenSubtitles
+```
+$bash run.sh 0 realtime_argmax SeqGAN OpenSubtitles
+```
+
 
 ## Hyperparameters
 For Counting, the suggested hyper-parameters are:
+
+```
     generator learning rate = 5e-5\~1e-4
     discriminator learning rate = 5e-5\~1e-4
     learning rate decay = 0.99\~1.00
     generator training steps = 1
     discriminator training steps = 5
+```
 
 For OpenSubtitles, the used hyper-parameters are:
+
+```
     generator learning rate = 1e-3 (or 5e-5 for weighted version)
     discriminator learning rate = 1e-3 (or 5e-5 for weighted version)
     learning rate decay = 1.00
     generator training steps = 1
     discriminator training steps = 5
+```
 
 
 ## Program Structures
