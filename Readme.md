@@ -10,7 +10,8 @@ The project is the implementation of our paper:
 * [Tuan, Yi-Lin, and Hung-Yi Lee. "Improving conditional sequence generative adversarial networks by stepwise evaluation." IEEE/ACM Transactions on Audio, Speech, and Language Processing 27.4 (2019): 788-798.](https://arxiv.org/abs/1808.05599)
 If you find it helpful, please kindly cite the paper.
 
-![StepGAN Architecture](St_StepGAN.png "The StepGAN Architecture. x is an input message and y1 to y6 are infered output tokens. The details are in the paper.")
+![StepGAN Architecture](St_StepGAN.png)
+> The StepGAN Architecture. x is an input message and y1 to y6 are infered output tokens. The details are in the paper.
 
 
 ## Requirements
