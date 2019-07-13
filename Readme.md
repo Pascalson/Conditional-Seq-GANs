@@ -1,4 +1,4 @@
-# Condition Sequence Generators
+# Condition Sequence GANs
 
 The project is for conditional sequence generation, e.g., chit-chat chatbot.
 
