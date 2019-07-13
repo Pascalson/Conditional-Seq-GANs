@@ -11,24 +11,14 @@ def load_critic(name, size=None, num_layers=None, vocab_size=None, buckets=None)
     if name == None:
         return None
     with variable_scope.variable_scope('critic') as scope:
-        if name == 'Counting_Task':
-            return Counting_Task()
-        elif name == 'Sequence_Task':
-            return Sequence_Task()
-        elif name == 'Addition_Task':
-            return Addition_Task()
-        elif 'SeqGAN' in name or 'MaliGAN' in name:
+        if 'GAN' in name or 'REGS' in name:
             return StepGAN(size, num_layers, vocab_size, buckets)
-        elif name == 'REGS':
-            return StepGAN(size, num_layers, vocab_size, buckets)
-        elif name == 'MaskGAN':
-            return StepGAN(size, num_layers, vocab_size, buckets)
-        elif 'StepGAN' in name:
-            return StepGAN(size, num_layers, vocab_size, buckets)
-        #elif name == 'Direct_WGAN_GP':
-        #    return Direct_WGAN_GP(size, num_layers, vocab_size, buckets)
+        elif name == 'REINFORCE' or name == 'Counting_Task':
+            return Counting_Task()#for Counting
+        else:
+            return None
 
-class Seq2Seq:#SeqGenerator
+class Seq2Seq:
     def __init__(
             self,
             mode,
@@ -86,9 +76,10 @@ class Seq2Seq:#SeqGenerator
         self.critic = load_critic(critic, critic_size, critic_num_layers, vocab_size, buckets)
         self.critic_name = critic
         # building value network
-        if critic is not None and critic is not 'None':
-            with variable_scope.variable_scope('valuenet') as scope:
-                self.value_net = ValueNet(critic_size, critic_num_layers, vocab_size, buckets)
+        if critic != None:
+            if 'GAN' in critic or critic == 'REGS':
+                with variable_scope.variable_scope('valuenet') as scope:
+                    self.value_net = ValueNet(critic_size, critic_num_layers, vocab_size, buckets)
         
         # core cells, encoder and decoder are separated
         self.cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(size) for _ in range(num_layers)])
@@ -245,7 +236,7 @@ class Seq2Seq:#SeqGenerator
                     tf.placeholder(tf.float32, shape = [None],
                                    name = 'weight{0}'.format(bid)))
             targets = [self.decoder_inputs[i+1] for i in range(len(self.decoder_inputs)-1)]
-        elif mode == 'TEST' or mode == 'D_TEST':
+        elif mode == 'TEST':
             for bid in range(buckets[-1][1] + 1):
                 self.decoder_inputs.append(
                     tf.placeholder(tf.int32, shape = [None],
@@ -441,14 +432,20 @@ class Seq2Seq:#SeqGenerator
                                             [reward - tf.reduce_mean(reward) for _ in range(bucket[1])])
                         loss_update = tf.reduce_sum(loss) / batch_size
 
-                    if critic is None:
+
+                    if critic == None:
                         self.enc_state.append(enc_state)# useless
-                        self.outputs.append(outputs)# useless, for print
                         self.losses.append(loss)
-                        
+                        softmax_outputs = []
+                        argmax_outputs = []
+                        for k in range(len(outputs)):#batch_id
+                            out = nn_ops.xw_plus_b(outputs[k], self.output_projection[0], self.output_projection[1])
+                            softmax_outputs.append(tf.nn.softmax(out))
+                            argmax_outputs.append(math_ops.argmax(out, axis=1))
+                        #self.outputs.append(argmax_outputs)
+                        self.outputs.append(softmax_outputs)
+
                     else:
-                        # for debug
-                        self.debug1.append(for_D_score_fake)
                         # for generating
                         self.enc_state.append(enc_state)# useless
                         self.outputs.append(samples)# useless, for print
@@ -456,17 +453,24 @@ class Seq2Seq:#SeqGenerator
                         self.each_probs.append(prob)# useless, for print
                         self.perp.append(tf.reduce_sum(prob) / batch_size)# useless, for print
                         
-                        # for scoring, REINFORCE's reward is got from environment
-                        self.each_rewards.append(reward)# useless
-                        self.for_G_rewards.append(for_G_rewards)
 
                         # for training
                         self.losses.append(loss_update)
-                        self.value_losses.append(value_loss_update)
-                        if 'GAN' in critic or critic == 'REGS':# for print
-                            self.D_losses.append(D_loss)
-                            self.D_real.append(D_prob_real)
-                            self.D_fake.append(D_prob_fake)
+
+                        if 'GAN' in critic or critic == 'REGS':
+                            # for debug
+                            self.debug1.append(for_D_score_fake)
+                            # for scoring
+                            self.each_rewards.append(reward)# useless
+                            self.for_G_rewards.append(for_G_rewards)
+                            self.value_losses.append(value_loss_update)
+
+                            self.D_losses.append(D_loss)# for print
+                            self.D_real.append(D_prob_real)# for print
+                            self.D_fake.append(D_prob_fake)# for print
+
+                        
+
 
             # all parameters collection
             params = tf.trainable_variables()
@@ -475,8 +479,6 @@ class Seq2Seq:#SeqGenerator
             s2s_params = [ x for x in params if x not in critic_params and x not in value_params ]
             critic_params.append(self.global_D_step)
             value_params.append(self.global_V_step)
-            # TODO print(s2s_params)
-            # TODO print(critic_params)
 
             # optimizer
             optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
@@ -488,27 +490,31 @@ class Seq2Seq:#SeqGenerator
             self.v_solver = []
             for j in range(len(self.buckets)):
                 # update generator
-                if critic is None:
+                if critic == None:
                     gradients = tf.gradients(self.losses[j], s2s_params)
-                else:
+                elif 'GAN' in critic or critic == 'REGS':
                     gradients = tf.gradients(self.losses[j], s2s_params, self.for_G_rewards[j])
+                else:
+                    gradients = tf.gradients(self.losses[j], s2s_params)
+
                 clipped_gradients, _ = tf.clip_by_global_norm(gradients, max_gradient_norm)
                 self.op_update.append(optimizer.apply_gradients(
                     zip(clipped_gradients, s2s_params),
                     global_step=self.global_step))
                 # update discriminator
-                if critic is not None:
-                    D_grads = tf.gradients(self.D_losses[j], critic_params)
-                    clipped_D_grads, _ = tf.clip_by_global_norm(D_grads, max_gradient_norm)
-                    self.D_solver.append(D_optimizer.apply_gradients(
-                        zip(clipped_D_grads, critic_params),
-                        global_step=self.global_D_step))
-                    # update value net
-                    v_grads = tf.gradients(self.value_losses[j], value_params)
-                    clipped_v_grads, _ = tf.clip_by_global_norm(v_grads, max_gradient_norm)
-                    self.v_solver.append(D_optimizer.apply_gradients(
-                        zip(clipped_v_grads, value_params),
-                        global_step=self.global_V_step))
+                if critic != None:
+                    if 'GAN' in critic or critic == 'REGS':
+                        D_grads = tf.gradients(self.D_losses[j], critic_params)
+                        clipped_D_grads, _ = tf.clip_by_global_norm(D_grads, max_gradient_norm)
+                        self.D_solver.append(D_optimizer.apply_gradients(
+                            zip(clipped_D_grads, critic_params),
+                            global_step=self.global_D_step))
+                        # update value net
+                        v_grads = tf.gradients(self.value_losses[j], value_params)
+                        clipped_v_grads, _ = tf.clip_by_global_norm(v_grads, max_gradient_norm)
+                        self.v_solver.append(D_optimizer.apply_gradients(
+                            zip(clipped_v_grads, value_params),
+                            global_step=self.global_V_step))
 
             self.pre_D_saver = tf.train.Saver(var_list=critic_params, max_to_keep=None, sharded=True)
             self.pre_value_saver = tf.train.Saver(var_list=value_params, max_to_keep=None, sharded=True)
@@ -585,68 +591,6 @@ class Seq2Seq:#SeqGenerator
 
             self.pre_saver = tf.train.Saver(var_list=s2s_params, sharded=True)
 
-        elif mode == 'D_TEST':
-            print(self.critic_name)
-            print('discriminator testing  mode (D_TEST)')
-            each_prob, each_logit = self.critic.discriminator(self.encoder_inputs, self.seq_len, self.critic.real_data, batch_size)
-            each_value_prob, each_value_logit = self.value_net.discriminator(self.encoder_inputs, self.seq_len, self.critic.real_data, batch_size)
-            real_uniW = uniform_weights(self.critic.real_data)
-            if 'SeqGAN' in self.critic_name or 'MaliGAN' in self.critic_name:
-                print('{} and its Monte-Carlo Tree Search state-action values'.format(self.critic_name)) 
-                def Monte_Carlo():
-                    enc_outputs, enc_state = \
-                        encode(self.enc_cell, self.encoder_inputs, self.seq_len)
-                    _, hiddens, _ = \
-                        decode(self.cell, enc_state, self.embedding, \
-                               self.decoder_inputs, self.buckets[-1][1], \
-                               feed_prev=False)
-                    N = 10
-                    rewards = []
-                    for step in range(self.buckets[-1][1]):
-                        each_step_reward = []
-                        for _ in range(N):
-                            with variable_scope.variable_scope(
-                                variable_scope.get_variable_scope(), reuse=True):
-                                _, MC_sample, _ = \
-                                    decode(self.cell, hiddens[step], self.embedding, \
-                                           [self.decoder_inputs[step+1]], self.buckets[-1][1]-step-1, \
-                                           feed_prev=True, loop_function=sample_loop_function)
-                                all_r, _ = self.critic.discriminator(self.encoder_inputs, self.seq_len, self.decoder_inputs[1:(step+2)]+MC_sample, batch_size)
-                            uniW = uniform_weights(self.decoder_inputs[1:(step+2)]+MC_sample)
-                            r = get_eos_value(all_r, uniW)
-                            each_step_reward.append(tf.reshape(r,[-1]))
-                        rewards.append(math_ops.add_n(each_step_reward) / N)
-                        #rewards.append(list(each_step_reward))
-                    return rewards
-                for_D_score = get_eos_value(each_prob, real_uniW)
-                for_D_each_prob = Monte_Carlo()
-            else:
-                for_D_each_prob, for_D_credits, _ = \
-                    weighted_rewards(each_prob, self.critic.real_data, real_uniW, 'uniform')
-                for_D_score = math_ops.add_n(for_D_each_prob) / (for_D_credits + 1e-12)
-                
-            if 'seq' in self.critic_name:
-                uni_each_value, _, _ = \
-                    weighted_rewards(each_value_logit, self.critic.real_data, real_uniW, 'uniform')
-            else:
-                uni_each_value, _, _ = \
-                    weighted_rewards(each_value_prob, self.critic.real_data, real_uniW, 'uniform')
-
-            # FIXME it's usable but a little chaostic
-            self.reward = tf.reduce_mean(for_D_score)
-            #self.D_probs = [[r[b] for r in for_D_each_prob] for b in range(1)]
-            self.D_probs = for_D_each_prob
-            self.uniW = uni_each_value#[[w[b] for w in uni_each_value] for b in range(1)]
-
-            critic_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='critic')
-            value_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='valuenet')
-            params = tf.trainable_variables()
-            s2s_params = [ x for x in params if x not in critic_params and x not in value_params ]
-
-            self.pre_saver = tf.train.Saver(var_list=critic_params, sharded=True)
-            self.pre_V_saver = tf.train.Saver(var_list=value_params, sharded=True)
-            self.pre_s2s_saver = tf.train.Saver(var_list=s2s_params, sharded=True)
-
         # whole seq2seq saver
         self.saver = tf.train.Saver(max_to_keep=None, sharded=True)
 
@@ -659,8 +603,8 @@ class Seq2Seq:#SeqGenerator
             bucket_id,
             encoder_lens=None,
             forward=False,
-            decoder_outputs=None,#for REINFORCE, MIXER
-            rewards=None,#for REINFORCE, MIXER
+            decoder_outputs=None,#for REINFORCE
+            rewards=None,#for REINFORCE
             GAN_mode=None#for GAN
     ):
     
@@ -687,7 +631,7 @@ class Seq2Seq:#SeqGenerator
                 outputs = sess.run(output_feed, input_feed)
                 return outputs[0], outputs[1]
 
-        #SeqGAN, MaliGAN, REGS, ESGAN, EBESGAN
+        #SeqGAN, MaliGAN, REGS, StepGAN
         elif GAN_mode:
             batch_size = encoder_inputs[0].shape[0]
             encoder_size, decoder_size = self.buckets[bucket_id]
@@ -762,9 +706,9 @@ class Seq2Seq:#SeqGenerator
             last_target = self.decoder_inputs[decoder_size].name
             input_feed[last_target] = np.zeros([batch_size], dtype = np.int32)
             if forward:
-                output_feed = [self.outputs[bucket_id], self.tmps[bucket_id]]
+                output_feed = self.outputs[bucket_id]
                 outputs = sess.run(output_feed, input_feed)
-                return outputs[0], outputs[1]
+                return outputs
             else:
                 for l in range(decoder_size-1):
                     input_feed[self.decoder_inputs[l+1].name] = decoder_outputs[l]
@@ -793,18 +737,6 @@ class Seq2Seq:#SeqGenerator
             #output_feed = [self.samples, self.log_prob, self.reward]
         return sess.run(output_feed, input_feed)
 
-    def test_discriminator(self, sess, encoder_inputs, encoder_lens, decoder_inputs):
-        encoder_size, decoder_size = self.buckets[-1]
-        input_feed = {}
-        for l in range(encoder_size):
-            input_feed[self.encoder_inputs[l].name] = encoder_inputs[l]
-        input_feed[self.seq_len] = encoder_lens
-        input_feed[self.decoder_inputs[0].name] = [data_utils.GO_ID]
-        for l in range(decoder_size):
-            input_feed[self.decoder_inputs[l+1].name] = decoder_inputs[l]
-            input_feed[self.critic.real_data[l].name] = decoder_inputs[l]
-        output_feed = [self.reward, self.D_probs, self.uniW]
-        return sess.run(output_feed, input_feed)
 
     def stepwise_test_beam(self, sess, encoder_inputs, encoder_lens, decoder_inputs):
         encoder_size, decoder_size = self.buckets[-1]

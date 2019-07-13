@@ -9,7 +9,6 @@ import sys
 import data_utils
 
 import args
-#import main
 FLAGS = args.FLAGS
 _buckets = args._buckets
 
@@ -26,19 +25,13 @@ def read_data(data_path, maxlen, max_size=None):
             source_ids = [int(x) for x in source.split()]
             target_ids = [int(x) for x in target.split()]
             target_ids.append(EOS_ID)
-            # form dataset
-            #if len(target_ids) > 3:
             dataset.append([source_ids, target_ids])
-            # next loop
             source = data_file.readline()
             target = data_file.readline()
     return dataset
 
 def read_data_with_buckets(data_path, max_size=None):
-    if FLAGS.option == 'MIXER':
-        buckets = [_buckets[-1]]
-    else:
-        buckets = _buckets
+    buckets = _buckets
     dataset = [[] for _ in buckets]
     with tf.gfile.GFile(data_path, mode='r') as data_file:
         source = data_file.readline()
@@ -51,18 +44,14 @@ def read_data_with_buckets(data_path, max_size=None):
             target_ids = [int(x) for x in target.split()]
             target_ids.append(data_utils.EOS_ID)
             # form dataset
+            stored = 0
             for bucket_id, (source_size, target_size) in enumerate(buckets):
-                #TODO: one can also check length of target_id or source_id
                 if len(source_ids) < source_size and len(target_ids) < target_size:
                     dataset[bucket_id].append([source_ids, target_ids])
+                    stored = 1
                     break
-                elif bucket_id == len(buckets):
-                    if len(source_ids) < source_size:
-                        dataset[bucket_id].append([source_ids, target_ids[:target_size]])
-                    elif len(target_ids) < target_size:
-                        dataset[bucket_id].append([source_ids[:source_size], target_ids])
-                    else:
-                        dataset[bucket_id].append([source_ids[:source_size], target_ids[:target_size]])
+            if stored == 0:#truncate the length
+                dataset[-1].append([ source_ids[:buckets[-1][0]], target_ids[:buckets[-1][1]] ])
             # next loop
             source = data_file.readline()
             target = data_file.readline()
@@ -77,7 +66,6 @@ def get_batch_with_buckets(data, batch_size, bucket_id, size=None):
     for i in range(batch_size):
         encoder_input, decoder_input = random.choice(data[bucket_id])
         encoder_pad = [data_utils.PAD_ID] * (encoder_size - len(encoder_input))
-        # feature in my implementation
         encoder_inputs.append(list(reversed(encoder_input)) + encoder_pad)
         seq_len.append(len(encoder_input))
         decoder_pad = [data_utils.PAD_ID] * (decoder_size - len(decoder_input))
@@ -115,8 +103,6 @@ def check_batch_ans(mycritic, inp, inp_lens, ans):
         if data_utils.EOS_ID in per_ans:
             per_ans = per_ans[:per_ans.index(data_utils.EOS_ID)]
         per_ans = ' '.join(tf.compat.as_str(mycritic.rev_vocab[out]) for out in per_ans)
-        #print(per_inp)
-        #print(per_ans)
         if mycritic.check_ans(per_inp, per_ans):
             rewards.append(1.0)
         else:

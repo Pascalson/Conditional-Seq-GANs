@@ -1,7 +1,9 @@
-#datadir=results
-#datadir=/home/pascalson/research/MyOpenSource/advanced-sequence-generator
-#datadir=/home/pascalson/research/backup_Warship/17000
-datadir=/home/pascalson/research/MyOpenSource/chatbot-data
+#datadir=/home/pascalson/research/MyOpenSource/chatbot-data/Synthetics2
+datadir=/home/pascalson/research/MyOpenSource/chatbot-data/English
+opensubtitlesdir=/home/pascalson/handover/StepGAN/model_ckpts/OpenSubtitles_Exp
+countingdir=./experiments/Counting_Exp
+
+
 gpu=$1
 testtype=$2
 opt=
@@ -27,9 +29,8 @@ else
   fix_steps=0
 fi
 
-if [[ ("$testtype" == 'accuracy') || ("$testtype" == 'KLD') \
-    || ("$testtype" == 'RKLD') || ("$testtype" == 'BLEU') \
-    || ("$testtype" == 'batch_test_D') ]]; then
+
+if [[ ("$testtype" == 'accuracy') ]]; then
   batchsize=1000
 else
   batchsize=64
@@ -45,40 +46,37 @@ elif [ "$task" == 'Counting' ]; then
   dsize=32
 fi
 
-config=""
-mdlname=$mdl
 
-if [[ ("$mdl" == 'SeqGAN') || ("$mdl" == 'REGS') \
-    || ("$mdl" == 'StepGAN') || ("$mdl" == 'MaliGAN') || ("$mdl" == 'StepGAN-W') \
-    || ("$mdl" == 'MC-SeqGAN') || ("$mdl" == 'MC-MaliGAN') \
-    || ("$mdl" == 'MaskGAN') ]]; then
-    gantype=$mdl
-    mdlname=$mdl\_G$Gstep\_D$Dstep\_lr$lr\_lrd$lrdecay
-    config="--D-lr=$lr --D-lr-decay-factor=$lrdecay --gan-type=$gantype --gan-size=$dsize --gan-num-layers=$numlayers --G-step=$Gstep --D-step=$Dstep --fix-steps=$fix_steps --option=$opt"
-fi
+config=""
+gantype=$mdl
+mdlname=Test_$mdl\_G$Gstep\_D$Dstep\_lr$lr\_lrd$lrdecay
+config="--D-lr=$lr --D-lr-decay-factor=$lrdecay --gan-type=$gantype --gan-size=$dsize --gan-num-layers=$numlayers --G-step=$Gstep --D-step=$Dstep --fix-steps=$fix_steps --option=$opt"
 
 echo "TestType:$testtype"
 echo "BatchSize:$batchsize"
 echo "GanType: $gantype; DSize: $dsize"
 
+
+
 if [ "$task" == 'OpenSubtitles' ]; then
   datapath=$datadir/opensubtitles/opensubtitles.txt
-  modeldir=$datadir/OpenSubtitles_Exp/$mdl
-  preDmodeldir=$modeldir/D
-  premodeldir=$datadir/OpenSubtitles_Exp/MLE
+  modeldir=$opensubtitlesdir/Test_$mdl
+  premodeldir=$opensubtitlesdir/MLE
   vocabsize=4000
   buckets='[(8,8),(10,10),(15,15),(20,20)]'
-  config="--pre-model-dir=$premodeldir --pre-D-model-dir=$preDmodeldir $config"
+  config="--pre-model-dir=$premodeldir $config"
 elif [ "$task" == 'Counting' ]; then
-  datapath=$datadir/data/counting/counting.txt
-  modeldir=$datadir/Counting_Exp/$mdlname
-  preDmodeldir=None
-  premodeldir=$datadir/Counting_Exp/MLE
+  datapath=$datadir/counting/counting.txt
+  modeldir=$countingdir/$mdlname
+  premodeldir=$countingdir/MLE
   vocabsize=14
   buckets='[(5,5),(10,5)]'
-  config="--pre-model-dir=$premodeldir --pre-D-model-dir=$preDmodeldir --test-critic="Counting_Task" $config"
+  config="--pre-model-dir=$premodeldir --test-critic="Counting_Task" $config"
 fi
+
 echo "TASK:$task; VOCABSIZE:$vocabsize; MODELSIZE:$size;"
+
+
 
 CUDA_VISIBLE_DEVICES=$gpu python3 main.py \
   --lr=$lr \

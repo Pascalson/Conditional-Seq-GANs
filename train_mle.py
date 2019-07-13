@@ -12,7 +12,7 @@ from seq2seq_model_comp import *
 import data_utils
 
 from train_utils import *
-import args 
+import args
 FLAGS = args.FLAGS
 _buckets = args._buckets
 
@@ -20,7 +20,7 @@ def train_mle():
     if not os.path.exists(FLAGS.model_dir):
         os.makedirs(FLAGS.model_dir)
 
-    def build_summaries(): 
+    def build_summaries():
         train_loss = tf.Variable(0.)
         tf.summary.scalar("train_loss", train_loss)
         eval_losses = []
@@ -35,7 +35,7 @@ def train_mle():
     train, dev, _ = data_utils.prepare_data(FLAGS.data_dir, FLAGS.data_path, FLAGS.vocab_size)
     vocab_path = os.path.join(FLAGS.data_dir, "vocab%d" % FLAGS.vocab_size)
     vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
-    
+
     with tf.Session() as sess:
         # build the model
         model = Seq2Seq(
@@ -68,7 +68,7 @@ def train_mle():
         if pre_ckpt and tf.train.checkpoint_exists(pre_ckpt.model_checkpoint_path):
             print ('read in model from {}'.format(pre_ckpt.model_checkpoint_path))
             model.pre_saver.restore(sess, pre_ckpt.model_checkpoint_path)
-
+    
         # load in train and dev(valid) data with buckets
         train_set = read_data_with_buckets(train, FLAGS.max_train_data_size)
         dev_set = read_data_with_buckets(dev)

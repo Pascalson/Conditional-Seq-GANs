@@ -24,11 +24,10 @@ UNK_ID = 3
 
 # Regular expressions used to tokenize.
 #_WORD_SPLIT = re.compile(b"([.,!?\"':;)(])")
-_WORD_SPLIT = re.compile(b"([,!?\":;)(])")
+#_WORD_SPLIT = re.compile(b"([,!?\":;)(])")
 _DIGIT_RE = re.compile(br"\d")
 
 def basic_tokenizer(sentence):
-    """Very basic tokenizer: split the sentence into a list of tokens."""
     words = []
     for space_separated_fragment in sentence.strip().split():
         words.extend([space_separated_fragment])

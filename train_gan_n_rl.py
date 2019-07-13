@@ -98,10 +98,7 @@ def train_gan():
 
         # load in train and dev(valid) data with buckets
         train_set = read_data_with_buckets(train, FLAGS.max_train_data_size)
-        if FLAGS.option == 'MIXER':# in MIXER, using the longest bucket
-            train_buckets_sizes = [len(train_set[-1])]
-        else:# in REINFORCE, SeqGAN, using buckets, (or can set a longest bucket)
-            train_buckets_sizes = [len(train_set[b]) for b in range(len(_buckets))]
+        train_buckets_sizes = [len(train_set[b]) for b in range(len(_buckets))]
         train_total_size = float(sum(train_buckets_sizes))
         print ('each buckets has: {d}'.format(d=train_buckets_sizes))
         train_buckets_scale = [sum(train_buckets_sizes[:i + 1]) / train_total_size
@@ -121,13 +118,10 @@ def train_gan():
         previous_rewards = []
         np.random.seed(1234)
         while True:
-            if FLAGS.option == 'MIXER':
-                bucket_id = -1
-            else:
-                # get batch from a random selected bucket
-                random_number_01 = np.random.random_sample()
-                bucket_id = min([i for i in range(len(train_buckets_scale))
-                                 if train_buckets_scale[i] > random_number_01])
+            # get batch from a random selected bucket
+            random_number_01 = np.random.random_sample()
+            bucket_id = min([i for i in range(len(train_buckets_scale))
+                             if train_buckets_scale[i] > random_number_01])
             encoder_inputs, decoder_inputs, weights, seq_lens, _ = \
                 get_batch_with_buckets(train_set, FLAGS.batch_size, bucket_id)
 
@@ -165,13 +159,13 @@ def train_gan():
                                      if train_buckets_scale[i] > random_number_01])
                     encoder_inputs, decoder_inputs, weights, seq_lens, _ = \
                         get_batch_with_buckets(train_set, FLAGS.batch_size, bucket_id)
-                    #TODO notice the relationship between steps_per_checkpoint and G steps
                     reward += np.sum(step_reward, axis=0) / FLAGS.batch_size / G_step
                     avg_debug1 += debug1 / FLAGS.batch_size / G_step
 
-            #TODO: use py_func, REINFORCE
+                loss += sum(sum(step_loss)) / FLAGS.batch_size / FLAGS.steps_per_checkpoint
+
             else:
-                step_samples, _ = model.train_step(sess, encoder_inputs, \
+                step_samples = model.train_step(sess, encoder_inputs, \
                                                    decoder_inputs, weights, \
                                                    bucket_id, seq_lens, forward=True)
                 step_reward = check_batch_ans(model.critic, encoder_inputs, seq_lens, step_samples)
@@ -182,45 +176,37 @@ def train_gan():
                                      decoder_outputs=step_samples, \
                                      rewards=step_reward)
                 reward += sum(step_reward) / FLAGS.batch_size / FLAGS.steps_per_checkpoint
-                
+                loss += step_loss / FLAGS.batch_size / FLAGS.steps_per_checkpoint
+
             step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-            loss += sum(sum(step_loss)) / FLAGS.batch_size / FLAGS.steps_per_checkpoint
             perp += step_perp / FLAGS.steps_per_checkpoint
             # log, save and eval
             current_step += 1
             if current_step % FLAGS.steps_per_checkpoint == 0:
-                #print(value)
                 print ("global step %d; learning rate %.8f; D lr %.8f; step-time %.2f;"
                        % (model.global_step.eval(),
                           model.learning_rate.eval(),
                           model.D_lr.eval(),
                           step_time))
-                #print(avg_debug1)
                 print("perp %.4f" % perp)
-                #print("loss %.8f" % loss)
-                print(loss)
+                print("loss %.4f" % loss)
                 if hasattr(model.critic, 'discriminator'):
                     print("D-loss %.4f" % D_loss)
-                    #print("value-loss %.4f" % value_loss)
                 if 'StepGAN' in FLAGS.gan_type or FLAGS.gan_type == 'REGS' or FLAGS.gan_type == 'MaskGAN':
                     len_times = []
                     for k, bucket in enumerate(_buckets):
                         len_times += [sum(bucket_times[k:])+1e-12] * (bucket[1]-len(len_times))
                     reward = np.true_divide(reward, len_times)
-                print("reward(D_fake_value) {}".format(reward))
+                print("reward/D_fake_value {}".format(reward))
                 f_reward_out.write("{}\n".format(reward))
+
                 # Decrease learning rate if no improvement was seen over last 3 times.
-                if 'EB' in FLAGS.gan_type:
-                    if len(previous_rewards) > 2 and np.sum(reward) > max(previous_rewards[-3:]):
-                        sess.run(model.op_lr_decay)
-                    elif len(previous_rewards) > 2 and np.sum(reward) < min(previous_rewards[-3:]):
-                        sess.run(model.op_D_lr_decay)
-                else:
-                    if len(previous_rewards) > 2 and np.sum(reward) < min(previous_rewards[-3:]):
-                        sess.run(model.op_lr_decay)
-                    elif len(previous_rewards) > 2 and np.sum(reward) > max(previous_rewards[-3:]):
-                        sess.run(model.op_D_lr_decay)
+                if len(previous_rewards) > 2 and np.sum(reward) < min(previous_rewards[-3:]):
+                    sess.run(model.op_lr_decay)
+                elif len(previous_rewards) > 2 and np.sum(reward) > max(previous_rewards[-3:]):
+                    sess.run(model.op_D_lr_decay)
                 previous_rewards.append(np.sum(reward))
+                
                 # write summary
                 feed_dict = {}
                 feed_dict[summary_vars[0]] = loss
@@ -232,6 +218,7 @@ def train_gan():
                                        feed_dict=feed_dict)
                 writer.add_summary(summary_str, model.global_step.eval())
                 writer.flush()
+
                 # Save checkpoint and zero timer and loss.
                 ckpt_path = os.path.join(FLAGS.model_dir, "ckpt")
                 model.saver.save(sess, ckpt_path, global_step=model.global_step)
